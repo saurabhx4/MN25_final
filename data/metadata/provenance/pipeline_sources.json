@@ -1,0 +1,12 @@
+{
+  "pipeline_version": "mn25-geodata-1.0.0",
+  "created_at": "2026-09-25",
+  "sources": [
+    {"name":"GSI manganese occurrences","url":"https://www.data.gov.in/resource/location-manganese-ore-deposits-india-and-its-salient-features","role":"known occurrence/deposit labels","status":"REQUIRES_DOWNLOAD_ACCESS"},
+    {"name":"NGDR","url":"https://geodataindia.gov.in/","role":"authoritative geology/structure where accessible","status":"REQUIRES_ACCESS_REVIEW"},
+    {"name":"Copernicus Sentinel-2 L2A","url":"https://documentation.dataspace.copernicus.eu/Data/SentinelMissions/Sentinel2.html","role":"surface reflectance + SCL","status":"REQUIRES_CDSE_DOWNLOAD_ACCESS"},
+    {"name":"Copernicus STAC","url":"https://stac.dataspace.copernicus.eu/v1/","role":"scene discovery","status":"PUBLIC_CATALOG"},
+    {"name":"Copernicus DEM GLO-30","url":"https://dataspace.copernicus.eu/explore-data/data-collections/copernicus-contributing-missions/collections-description/COP-DEM","role":"terrain","status":"REQUIRES_DOWNLOAD_ACCESS"},
+    {"name":"USGS Spectral Library","url":"https://www.usgs.gov/labs/spectroscopy-lab/usgs-spectral-library","role":"spectral interpretation only, never field labels","status":"REFERENCE"}
+  ]
+}

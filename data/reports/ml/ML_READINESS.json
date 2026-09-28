@@ -1,0 +1,10 @@
+{
+  "status": "TRAINING_BLOCKED_DATASET_INVALID",
+  "dataset_readiness": "BLOCKED",
+  "classification": {"status": "BLOCKED", "reason": "Authoritative manganese occurrences, Sentinel-2 L2A, DEM and GSI geology are unavailable in the prepared dataset package."},
+  "regression": {"status": "INSUFFICIENT_DATA", "reason": "No validated laboratory/assay Mn concentration training table is available."},
+  "models_trained": [],
+  "artifacts": [],
+  "production_model": null,
+  "generated_at": "2026-09-25"
+}

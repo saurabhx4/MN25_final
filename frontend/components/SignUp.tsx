@@ -1,0 +1,19 @@
+'use client';
+import { useState } from 'react';
+import { ArrowLeft, ShieldCheck } from 'lucide-react';
+import { Atmosphere, GoogleIcon } from './Brand';
+import { authRegister } from '../lib/api';
+
+type Env = 'organization' | 'employee' | null;
+export default function SignUp({ onBack, onSuccess, onGoToLogin }: { onBack: () => void; onSuccess: (env: 'organization' | 'employee') => void; onGoToLogin: () => void; }) {
+  const [env, setEnv] = useState<Env>(null); const [identifier, setIdentifier] = useState(''); const [userId, setUserId] = useState(''); const [orgId, setOrgId] = useState(''); const [securityKey, setSecurityKey] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  async function submit(e: React.FormEvent) { e.preventDefault(); if (!identifier.trim() || !userId.trim() || !orgId.trim() || !securityKey.trim()) { setError('All fields are required to create your account.'); return; } setBusy(true); setError(''); try { const result = await authRegister({ organizationName: orgId, name: userId, email: identifier, password: securityKey, environment: env === 'employee' ? 'EMPLOYEE' : 'ORGANIZATION' }); onSuccess(result.user.environment as 'organization' | 'employee'); } catch (err) { setError(err instanceof Error ? err.message : 'Unable to create the account.'); } finally { setBusy(false); } }
+  function googleContinue() { setError('Google authentication is not configured in this deployment.'); }
+  return <div className="signin-screen"><Atmosphere /><div className="signin-panel signup-panel">
+    {env === null ? <><button className="back-link" onClick={onBack}><ArrowLeft size={14} /> Back</button><h2>Create your Mn 25 account</h2><p className="sub">Select your access environment to get started</p><div className="env-choice"><button className="env-option" onClick={() => setEnv('organization')}><b>Organization</b><span>For mining organizations, administrators and operational teams.</span></button><button className="env-option" onClick={() => setEnv('employee')}><b>Employee</b><span>For authorized mining personnel and employees.</span></button></div></> : <>
+      <button className="back-link" onClick={() => { setEnv(null); setError(''); }}><ArrowLeft size={14} /> Back</button><h2>{env === 'organization' ? 'Create Organization Account' : 'Create Employee Account'}</h2><p className="sub">A few details to set up secure access to Mn 25</p>
+      <button type="button" className="btn-google" onClick={googleContinue}><GoogleIcon size={17} /> Continue with Google</button><div className="auth-divider">or sign up with details</div>
+      <form onSubmit={submit}><div className="field"><label>Email</label><input type="email" value={identifier} onChange={e => setIdentifier(e.target.value)} placeholder="you@company.com" autoComplete="email" /></div><div className="field"><label>Full Name</label><input value={userId} onChange={e => setUserId(e.target.value)} placeholder="Your full name" autoComplete="name" /></div><div className="field"><label>Organization Name</label><input value={orgId} onChange={e => setOrgId(e.target.value)} placeholder="Your organization" /></div><div className="field"><label>Password</label><input type="password" value={securityKey} onChange={e => setSecurityKey(e.target.value)} placeholder="At least 10 characters" autoComplete="new-password" /></div>{error && <div className="form-error">{error}</div>}<div className="signin-security"><ShieldCheck size={15} /><span><strong>Secure authentication</strong> uses an HTTP-only session cookie. Authentication tokens are not stored in browser local storage.</span></div><button className="btn primary block" type="submit" disabled={busy}>{busy ? 'Creating Account…' : 'Create Account'}</button></form>
+      <p className="auth-switch">Already have an account? <button type="button" onClick={onGoToLogin}>Log in</button></p></>}
+  </div></div>;
+}

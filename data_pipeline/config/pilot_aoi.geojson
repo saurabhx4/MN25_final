@@ -1,0 +1,17 @@
+{
+  "type": "FeatureCollection",
+  "name": "mn25_central_india_sausar_pilot",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Central Indian Sausar pilot AOI",
+        "note": "Configurable pilot envelope for Balaghat-Bhandara-Nagpur context; review against authoritative study-area boundaries before production acquisition."
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[79.5167,21.3167],[81.0500,21.3167],[81.0500,22.4000],[79.5167,22.4000],[79.5167,21.3167]]]
+      }
+    }
+  ]
+}

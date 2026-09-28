@@ -1,0 +1,1539 @@
+// MN25 Mineral Intelligence — Dashboard backend schema
+// PostgreSQL + PostGIS. Run `npx prisma migrate dev` after setting DATABASE_URL.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis]
+}
+
+// ---------------------------------------------------------------------------
+// Identity / tenancy
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  RESEARCHER
+  OPERATOR
+  MANAGER
+  ADMIN
+}
+
+enum UserEnvironment {
+  ORGANIZATION
+  EMPLOYEE
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  users              User[]
+  mines              Mine[]
+  analysisJobs       AnalysisJob[]
+  samples            Sample[]
+  reports            Report[]
+  auditLogs          AuditLog[]
+  prospectivityZones ProspectivityZone[]
+  mapConfigurations  MapConfiguration[]
+  spectralAnalyses   SpectralAnalysis[]
+  modelValidations   ModelValidation[]
+  actionPlans        ActionPlan[]
+  recommendations   Recommendation[]
+  actions            Action[]
+  settings           OrganizationSettings?
+  productionRecords  ProductionRecord[]
+  productionForecasts ProductionForecast[]
+  productionScenarios ProductionScenario[]
+  risks              Risk[]
+  riskEvents         RiskEvent[]
+  sessions            AuthSession[]
+  datasets            Dataset[]
+  datasetVersions     DatasetVersion[]
+  analysisDatasetLinks AnalysisDatasetLink[]
+  dataQualityRuns     DataQualityRun[]
+  models              ModelRegistry[]
+  modelPredictions    ModelPrediction[]
+  datasetGeometries   DatasetGeometry[]
+  regions             Region[]
+  miningAreas         MiningArea[]
+  satelliteScenes     SatelliteScene[]
+  canonicalAnalyses   Analysis[]
+  analysisResults     AnalysisResult[]
+  canonicalModels     Model[]
+  predictions         Prediction[]
+  mlExperiments       MLExperiment[]
+  mlTrainingRuns      MLTrainingRun[]
+  mlPredictionRuns    MLPredictionRun[]
+}
+
+model User {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  email          String       @unique
+  passwordHash   String
+  name           String
+  role           UserRole     @default(OPERATOR)
+  environment    UserEnvironment @default(EMPLOYEE)
+  isActive       Boolean      @default(true)
+  updatedAt      DateTime     @updatedAt
+  lastSelectedZoneId String?
+  createdAt      DateTime     @default(now())
+
+  analysisJobs AnalysisJob[]
+  analyses    Analysis[]
+  samples      Sample[]
+  reports      Report[]
+  auditLogs    AuditLog[]
+  mapConfigurations MapConfiguration[]
+  spectralAnalyses  SpectralAnalysis[]
+  productionForecasts ProductionForecast[]
+  productionScenarios ProductionScenario[]
+  modelValidations  ModelValidation[]
+  actionPlans       ActionPlan[]
+  actionsCreated    Action[]      @relation("ActionCreatedBy")
+  settings          UserSettings?
+  risksOwned        Risk[]       @relation("RiskOwner")
+  riskEvents        RiskEvent[]  @relation("RiskEventActor")
+  sessions          AuthSession[]
+  mineMemberships   UserMine[]
+  datasetsCreated   Dataset[] @relation("DatasetCreatedBy")
+  datasetVersionsCreated DatasetVersion[] @relation("DatasetVersionCreatedBy")
+  dataQualityRuns   DataQualityRun[]
+  modelPredictions ModelPrediction[]
+  mlExperimentsCreated MLExperiment[] @relation("MLExperimentCreatedBy")
+  mlPredictionRuns MLPredictionRun[] @relation("MLPredictionRunRequestedBy")
+}
+
+
+// ---------------------------------------------------------------------------
+// Authentication / authorization
+// ---------------------------------------------------------------------------
+
+model AuthSession {
+  id           String   @id @default(uuid())
+  userId       String
+  organizationId String
+  tokenHash    String   @unique
+  expiresAt    DateTime
+  lastUsedAt   DateTime @default(now())
+  revokedAt    DateTime?
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([organizationId])
+  @@index([expiresAt])
+}
+
+model UserMine {
+  userId       String
+  mineId       String
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mine         Mine     @relation(fields: [mineId], references: [id], onDelete: Cascade)
+
+  @@id([userId, mineId])
+  @@index([mineId])
+}
+
+// ---------------------------------------------------------------------------
+// Organization / user settings
+// ---------------------------------------------------------------------------
+
+model OrganizationSettings {
+  id                     String       @id @default(uuid())
+  organizationId        String       @unique
+  organization           Organization @relation(fields: [organizationId], references: [id])
+  forecastHorizon       Int          @default(30)
+  riskThreshold         Float        @default(70)
+  prospectivityThreshold Float       @default(75)
+  defaultModel          String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+}
+
+model UserSettings {
+  id                    String       @id @default(uuid())
+  userId                String       @unique
+  user                  User         @relation(fields: [userId], references: [id])
+  selectedMineId        String?
+  selectedMine          Mine?        @relation("SelectedMine", fields: [selectedMineId], references: [id])
+  timezone              String       @default("UTC")
+  units                 String       @default("metric")
+  notificationPreferences Json?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  @@index([selectedMineId])
+}
+
+// ---------------------------------------------------------------------------
+// Mines / zones (geospatial)
+// ---------------------------------------------------------------------------
+
+model Mine {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  region         String
+  /// PostGIS polygon boundary, stored via raw SQL (Unsupported type — Prisma cannot model geometry natively)
+  boundary       Unsupported("geometry(Polygon, 4326)")?
+  createdAt      DateTime     @default(now())
+
+  selectedByUsers UserSettings[] @relation("SelectedMine")
+  zones        Zone[]
+  analysisJobs AnalysisJob[]
+  productionRecords ProductionRecord[]
+  productionForecasts ProductionForecast[]
+  productionScenarios ProductionScenario[]
+  samples      Sample[]
+  actionPlans ActionPlan[]
+  recommendations Recommendation[]
+  actions      Action[]
+  risks        Risk[]
+  userMemberships UserMine[]
+  datasets     Dataset[]
+  miningAreas  MiningArea[]
+  regions      Region[]
+  canonicalAnalyses Analysis[]
+}
+
+enum ZoneStatus {
+  AVAILABLE
+  ACTIVE_EXTRACTION
+  MONITORING
+  RESTRICTED
+}
+
+// Documented / authoritative record type. AI-predicted areas are NEVER
+// stored as a Zone — they live in ProspectivityZone — so the two are
+// structurally impossible to conflate in a response payload.
+enum MiningRecordType {
+  DOCUMENTED_MINE
+  DOCUMENTED_OCCURRENCE
+}
+
+model Zone {
+  id        String     @id @default(uuid())
+  mineId    String
+  mine      Mine       @relation(fields: [mineId], references: [id])
+  name      String
+  region    String
+  /// PostGIS point location
+  location  Unsupported("geometry(Point, 4326)")
+  latitude  Float
+  longitude Float
+  areaKm2   Float
+  status    ZoneStatus @default(MONITORING)
+  geology   String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  // --- Mining-area / provenance attributes (Explore: Mining Areas) ---
+  recordType     MiningRecordType @default(DOCUMENTED_OCCURRENCE)
+  commodity      String           @default("manganese")
+  state          String?
+  district       String?
+  mineType       String?
+  operatorName   String?          // authoritative only — redacted for VIEWER role
+  oreGradePercent   Float?
+  productionTonnesPerYear Float?
+  sourceName     String?          // e.g. "Geological Survey of India"
+  sourceUrl      String?
+  lastVerifiedAt DateTime?
+
+  predictions        ProspectivityPrediction[]
+  mnObservations     ManganeseObservation[]
+  analysisJobs       AnalysisJob[]
+
+  @@index([mineId])
+  @@index([recordType])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// AI prospectivity hotspots (Explore: Hotspots) — intentionally NOT a Zone.
+// A hotspot is a model prediction over an area, never a confirmed deposit.
+// ---------------------------------------------------------------------------
+
+enum ProspectivityZoneStatus {
+  ACTIVE
+  SUPERSEDED
+  ARCHIVED
+}
+
+model ProspectivityZone {
+  id             String   @id @default(uuid())
+  // null organizationId = generated from a public/regional model run and
+  // visible platform-wide; set = produced from an org's own region analysis.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  region         String?
+  /// PostGIS polygon geometry of the predicted zone
+  geometry       Unsupported("geometry(Polygon, 4326)")
+  centerLatitude  Float
+  centerLongitude Float
+
+  modelVersionId String
+  modelVersion   ModelVersion @relation(fields: [modelVersionId], references: [id])
+  inputDatasetVersion String
+
+  prospectivityScore Float   // 0-100
+  confidence         Float   // 0-100
+  uncertainty        Float?  // +/- percent
+  predictedMnConcentration Float? // percent — null unless the geospatial engine actually returned one
+  featureContributions Json? // null when the model provides no explainability output — never invented
+  limitations        String?
+
+  status       ProspectivityZoneStatus @default(ACTIVE)
+  generatedAt  DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  sourceAnalysisJob AnalysisJob?
+  samples           Sample[]
+  validations       ModelValidation[]
+
+  @@index([organizationId, status])
+  @@index([prospectivityScore])
+}
+
+// ---------------------------------------------------------------------------
+// Models / provenance
+// ---------------------------------------------------------------------------
+
+enum ModelRegistryStatus {
+  DRAFT
+  VALIDATED
+  DEPLOYED
+  RETIRED
+}
+
+enum ModelType {
+  PROSPECTIVITY
+  MN_CONCENTRATION
+  PRODUCTION_FORECAST
+  RISK
+}
+
+model ModelRegistry {
+  id              String              @id @default(uuid())
+  organizationId  String?
+  organization    Organization?       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name            String
+  purpose         String
+  type            ModelType
+  status          ModelRegistryStatus  @default(DRAFT)
+  currentVersion  String?
+  trainingDataset String?
+  trainingDate    DateTime?
+  metrics         Json?
+  features        Json?
+  deploymentDate  DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  versions        ModelVersion[]
+  predictions     ModelPrediction[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
+}
+
+enum MLModelStatus {
+  DRAFT
+  TRAINED
+  VALIDATED
+  REVIEW
+  APPROVED
+  PRODUCTION
+  RETIRED
+}
+
+model ModelVersion {
+  id          String    @id @default(uuid())
+  modelId     String?
+  model       ModelRegistry? @relation(fields: [modelId], references: [id], onDelete: SetNull)
+  canonicalModelId String?
+  canonicalModel   Model? @relation("CanonicalModelVersions", fields: [canonicalModelId], references: [id], onDelete: SetNull)
+  name        String
+  version     String
+  type        ModelType
+  description String?
+  status      ModelRegistryStatus @default(DRAFT)
+  // Provenance required on every /api/models response — never fabricated;
+  // null until the model registry / training pipeline actually reports it.
+  trainingDataset String?
+  trainingDate   DateTime?
+  metrics         Json?
+  features        Json?
+  deploymentDate DateTime?
+  releasedAt  DateTime  @default(now())
+  algorithm String?
+  hyperparameters Json?
+  datasetVersion String?
+  featureVersion String?
+  artifactLocation String?
+  codeVersion String?
+  calibration Json?
+  uncertaintyMethod String?
+  applicabilityMethod String?
+  mlStatus MLModelStatus @default(DRAFT)
+
+  predictions        ProspectivityPrediction[]
+  productionForecasts ProductionForecast[]
+  analysisJobs       AnalysisJob[]
+  prospectivityZones ProspectivityZone[]
+  spectralAnalyses   SpectralAnalysis[]
+  validations        ModelValidation[]
+  risks              Risk[]
+  modelPredictions   ModelPrediction[]
+  canonicalPredictions Prediction[]
+  canonicalAnalyses Analysis[]
+  mlTrainingRuns MLTrainingRun[]
+  mlPredictionRuns MLPredictionRun[]
+
+  @@unique([name, version])
+  @@index([modelId, status])
+}
+
+model ModelPrediction {
+  id                    String       @id @default(uuid())
+  organizationId        String
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requestedByUserId     String?
+  requestedBy           User?        @relation(fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  modelId               String
+  model                 ModelRegistry @relation(fields: [modelId], references: [id], onDelete: Restrict)
+  modelVersionId        String
+  modelVersion          ModelVersion @relation(fields: [modelVersionId], references: [id], onDelete: Restrict)
+  inputDatasetVersions  Json
+  geometry              Unsupported("geometry(Geometry, 4326)")?
+  prediction            Json
+  confidence            Float?
+  uncertainty            Float?
+  explanation           Json?
+  generatedAt           DateTime     @default(now())
+
+  @@index([organizationId, generatedAt])
+  @@index([organizationId, modelId, modelVersionId])
+}
+
+enum MLJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  BLOCKED
+}
+
+model MLExperiment {
+  id String @id @default(uuid())
+  organizationId String
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUserId String
+  createdBy User @relation("MLExperimentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  name String
+  datasetVersion String
+  featureVersion String
+  modelType String
+  hyperparameters Json
+  randomSeed Int
+  trainingBlocks Json
+  validationBlocks Json
+  testBlocks Json
+  metrics Json?
+  regionalMetrics Json?
+  calibration Json?
+  status MLJobStatus @default(QUEUED)
+  codeVersion String
+  createdAt DateTime @default(now())
+  startedAt DateTime?
+  completedAt DateTime?
+  errorMessage String?
+  trainingRuns MLTrainingRun[]
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, status])
+}
+
+model MLTrainingRun {
+  id String @id @default(uuid())
+  organizationId String
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  experimentId String
+  experiment MLExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  modelVersionId String?
+  modelVersion ModelVersion? @relation(fields: [modelVersionId], references: [id], onDelete: SetNull)
+  status MLJobStatus @default(QUEUED)
+  algorithm String
+  artifactLocation String?
+  metrics Json?
+  regionalMetrics Json?
+  calibration Json?
+  uncertainty Json?
+  applicability Json?
+  startedAt DateTime?
+  completedAt DateTime?
+  errorMessage String?
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([experimentId])
+}
+
+model MLPredictionRun {
+  id String @id @default(uuid())
+  organizationId String
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requestedByUserId String
+  requestedBy User @relation("MLPredictionRunRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  analysisJobId String? @unique
+  analysisJob AnalysisJob? @relation("MLPredictionAnalysisJob", fields: [analysisJobId], references: [id], onDelete: SetNull)
+  modelVersionId String
+  modelVersion ModelVersion @relation(fields: [modelVersionId], references: [id], onDelete: Restrict)
+  datasetVersion String
+  featureVersion String
+  geometry Json
+  status MLJobStatus @default(QUEUED)
+  artifactLocation String?
+  predictionCount Int?
+  sourceSceneIds Json?
+  startedAt DateTime?
+  completedAt DateTime?
+  errorMessage String?
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, modelVersionId])
+}
+
+enum DataSourceType {
+  SATELLITE
+  GEOLOGICAL_SURVEY
+  SPECTRAL
+  GROUND_SAMPLE
+  HISTORICAL_RECORD
+}
+
+model DataSource {
+  id            String         @id @default(uuid())
+  name          String
+  type          DataSourceType
+  provenanceUrl String?
+  description   String?
+  datasetVersion String
+
+  predictionLinks PredictionDataSource[]
+  observations    ManganeseObservation[]
+  spectralAnalyses SpectralAnalysis[]
+
+  @@unique([name, datasetVersion])
+}
+
+// ---------------------------------------------------------------------------
+// Predictions (AI) — never presented as confirmed reserves
+// ---------------------------------------------------------------------------
+
+enum ProspectivityLevel {
+  LOW
+  MODERATE
+  HIGH
+}
+
+model ProspectivityPrediction {
+  id                    String             @id @default(uuid())
+  zoneId                String
+  zone                  Zone               @relation(fields: [zoneId], references: [id])
+  modelVersionId        String
+  modelVersion          ModelVersion       @relation(fields: [modelVersionId], references: [id])
+  inputDatasetVersion   String
+  predictedMnConcentration Float           // percent
+  confidence            Float              // 0-100
+  uncertainty           Float              // +/- percent
+  prospectivityScore    Float              // 0-100
+  prospectivityLevel    ProspectivityLevel
+  createdAt             DateTime           @default(now())
+
+  dataSources PredictionDataSource[]
+  analysisJob AnalysisJob?
+
+  @@index([zoneId, createdAt])
+}
+
+model PredictionDataSource {
+  id           String                  @id @default(uuid())
+  predictionId String
+  prediction   ProspectivityPrediction @relation(fields: [predictionId], references: [id])
+  dataSourceId String
+  dataSource   DataSource              @relation(fields: [dataSourceId], references: [id])
+
+  @@unique([predictionId, dataSourceId])
+}
+
+// Manganese concentration series shown on the Dashboard distribution chart.
+// `kind` disambiguates ground-truth observations from model output so the
+// UI never blends them silently.
+enum MnValueKind {
+  OBSERVED
+  MODELLED
+  PREDICTED
+}
+
+model ManganeseObservation {
+  id           String      @id @default(uuid())
+  zoneId       String
+  zone         Zone        @relation(fields: [zoneId], references: [id])
+  kind         MnValueKind
+  concentration Float
+  binLabel     String      // e.g. "3-4" — matches the Dashboard histogram bins
+  measuredAt   DateTime
+  dataSourceId String?
+  dataSource   DataSource? @relation(fields: [dataSourceId], references: [id])
+
+  @@index([zoneId, kind, measuredAt])
+}
+
+// ---------------------------------------------------------------------------
+// Analysis jobs (async AI/geospatial work, queued to workers)
+// ---------------------------------------------------------------------------
+
+enum AnalysisStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum AnalysisType {
+  PROSPECTIVITY
+  REGION_COMPARISON
+  SPECTRAL
+  REGION_SCAN // Explore: "AI scan of selected geographic area" (POST /api/analyses/region)
+}
+
+model AnalysisJob {
+  id              String         @id @default(uuid())
+  organizationId  String
+  organization    Organization   @relation(fields: [organizationId], references: [id])
+  mineId          String?
+  mine            Mine?          @relation(fields: [mineId], references: [id])
+  zoneId          String?
+  zone            Zone?          @relation(fields: [zoneId], references: [id])
+  requestedByUserId String
+  requestedBy     User           @relation(fields: [requestedByUserId], references: [id])
+  analysisType    AnalysisType
+  status          AnalysisStatus @default(QUEUED)
+  modelVersionId  String?
+  modelVersion    ModelVersion?  @relation(fields: [modelVersionId], references: [id])
+  resultPredictionId String?     @unique
+  resultPrediction ProspectivityPrediction? @relation(fields: [resultPredictionId], references: [id])
+
+  // --- REGION_SCAN (Explore region-select AI scan) ---
+  /// GeoJSON of the user-drawn analysis geometry (validated on submit; not spatially queried, so plain Json is enough here)
+  regionGeometry     Json?
+  regionAreaKm2      Float?
+  requestedLayers    Json?
+  resultZoneId       String?            @unique
+  resultZone         ProspectivityZone? @relation(fields: [resultZoneId], references: [id])
+  resultPayload      Json?              // spectral/geology/terrain indicators + provenance, when the analysis type doesn't map to a single ProspectivityZone row
+  datasetLinks       AnalysisDatasetLink[]
+  canonicalAnalysisId String? @unique
+  canonicalAnalysis   Analysis? @relation(fields: [canonicalAnalysisId], references: [id], onDelete: SetNull)
+  mlPredictionRun MLPredictionRun? @relation("MLPredictionAnalysisJob")
+
+  inputPayload    Json
+  errorMessage    String?
+  // --- Pipeline stage tracking (GET /api/ai-analysis/:id/status) ---
+  currentStage    String?        // data_validation | satellite_acquisition | preprocessing |
+                                  // feature_generation | model_inference | uncertainty_estimation |
+                                  // explainability | result_storage
+  progress        Int            @default(0) // 0-100, set by the worker as it moves through stages
+  startedAt       DateTime?
+  createdAt       DateTime       @default(now())
+  completedAt     DateTime?
+
+  @@index([organizationId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Spectral analysis (AI Analysis: Spectral Analysis tab)
+// Real band statistics / indices / anomaly maps only — if no satellite scene
+// or spectral engine is available for the requested geometry/scene, the row
+// is persisted with status = UNAVAILABLE and a reason, never fabricated values.
+// ---------------------------------------------------------------------------
+
+enum SpectralAnalysisStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  UNAVAILABLE
+  FAILED
+}
+
+model SpectralAnalysis {
+  id             String                 @id @default(uuid())
+  organizationId String
+  organization   Organization           @relation(fields: [organizationId], references: [id])
+  requestedByUserId String
+  requestedBy    User                   @relation(fields: [requestedByUserId], references: [id])
+
+  sceneId        String?                // satellite scene identifier, if known
+  geometry       Json?                  // GeoJSON Polygon the spectral read applies to
+  bandConfiguration Json?                // requested bands / index definitions
+
+  modelVersionId String?
+  modelVersion   ModelVersion?          @relation(fields: [modelVersionId], references: [id])
+  dataSourceId   String?
+  dataSource     DataSource?            @relation(fields: [dataSourceId], references: [id])
+
+  status         SpectralAnalysisStatus @default(QUEUED)
+  unavailableReason String?
+
+  // Real outputs only — each null until an actual spectral engine/scene
+  // produces it (see lib/spectral/spectral.provider.ts).
+  bandStatistics     Json?
+  indices            Json?
+  anomalyMap         Json?
+  spectralSignatures Json?
+  pixelDistributions Json?
+  qualityMetrics     Json?
+
+  errorMessage   String?
+  createdAt      DateTime               @default(now())
+  completedAt    DateTime?
+
+  @@index([organizationId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Model validation (AI Analysis: Model Insights — validation metrics)
+// Computed strictly from GROUND_TRUTH Sample rows vs. stored predictions.
+// ---------------------------------------------------------------------------
+
+model ModelValidation {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  requestedByUserId String
+  requestedBy    User         @relation(fields: [requestedByUserId], references: [id])
+
+  modelVersionId String
+  modelVersion   ModelVersion @relation(fields: [modelVersionId], references: [id])
+  regionId       String?
+  region         ProspectivityZone? @relation(fields: [regionId], references: [id])
+
+  sampleIds      String[]     // GROUND_TRUTH Sample ids used in this validation run
+  validationDatasetVersion String?
+
+  // Regression metrics (predicted vs. observed Mn concentration)
+  mae            Float?
+  rmse           Float?
+  r2             Float?
+  // Classification metrics (predicted vs. observed prospectivity level), when applicable
+  precision      Float?
+  recall         Float?
+  confusionMatrix Json?
+
+  sampleCount    Int
+  validatedAt    DateTime     @default(now())
+
+  @@index([organizationId, modelVersionId])
+}
+
+
+// ---------------------------------------------------------------------------
+// Production intelligence / forecasting
+// ---------------------------------------------------------------------------
+
+enum ProductionForecastStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  UNAVAILABLE
+}
+
+model ProductionRecord {
+  id                    String       @id @default(uuid())
+  organizationId        String
+  organization          Organization @relation(fields: [organizationId], references: [id])
+  mineId                String
+  mine                  Mine         @relation(fields: [mineId], references: [id])
+  date                  DateTime     @db.Date
+  plannedProduction     Float?
+  actualProduction      Float?
+  oreGrade              Float?
+  equipmentAvailability Float?
+  weather               Json?
+  downtime              Float?
+  sourceName            String?
+  sourceDatasetVersion  String?
+  sourceUrl             String?
+  createdAt             DateTime     @default(now())
+
+  @@unique([mineId, date])
+  @@index([organizationId, mineId, date])
+}
+
+model ProductionForecast {
+  id                    String                  @id @default(uuid())
+  organizationId        String
+  organization          Organization            @relation(fields: [organizationId], references: [id])
+  mineId                String
+  mine                  Mine                    @relation(fields: [mineId], references: [id])
+  requestedByUserId     String
+  requestedBy           User                    @relation(fields: [requestedByUserId], references: [id])
+  forecastHorizon       Int
+  modelVersionId        String?
+  modelVersion          ModelVersion?           @relation(fields: [modelVersionId], references: [id])
+  modelId               String?
+  modelVersionLabel     String?
+  trainingDataset       String?
+  status                ProductionForecastStatus @default(QUEUED)
+  forecast              Json?
+  target                Float?
+  shortfall             Float?
+  confidence            Float?
+  uncertainty            Float?
+  factors               Json?
+  inputSnapshot         Json
+  generatedAt           DateTime?
+  errorMessage          String?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  @@index([organizationId, mineId, createdAt])
+  @@index([organizationId, status])
+}
+
+model ProductionScenario {
+  id                    String       @id @default(uuid())
+  organizationId        String
+  organization          Organization @relation(fields: [organizationId], references: [id])
+  mineId                String
+  mine                  Mine         @relation(fields: [mineId], references: [id])
+  requestedByUserId     String
+  requestedBy           User          @relation(fields: [requestedByUserId], references: [id])
+  forecastHorizon       Int
+  equipmentDowntime     Float
+  blastingDelay         Float
+  workingHours          Float
+  rainfall              String
+  modelId               String?
+  modelVersion          String?
+  trainingDataset       String?
+  production            Float?
+  shortfall             Float?
+  recoveryOpportunity   Float?
+  risk                  Float?
+  confidence            Float?
+  assumptions           Json?
+  status                ProductionForecastStatus @default(COMPLETED)
+  errorMessage          String?
+  createdAt             DateTime     @default(now())
+
+  @@index([organizationId, mineId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Samples / Reports (quick actions)
+// ---------------------------------------------------------------------------
+
+enum SampleStatus {
+  UPLOADED
+  PROCESSING
+  INGESTED
+  FAILED
+}
+
+// FILE_UPLOAD = raw file dropped via POST /api/samples/upload (fileName/storageUrl only).
+// GROUND_TRUTH = a structured lab/field measurement usable for model validation
+// (POST /api/samples) — this is the record type GET /api/model-validation reads.
+enum SampleKind {
+  FILE_UPLOAD
+  GROUND_TRUTH
+}
+
+model Sample {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  mineId         String?
+  mine           Mine?        @relation(fields: [mineId], references: [id])
+  uploadedByUserId String
+  uploadedBy     User         @relation(fields: [uploadedByUserId], references: [id])
+  kind           SampleKind   @default(FILE_UPLOAD)
+
+  // --- FILE_UPLOAD fields ---
+  fileName       String?
+  storageUrl     String?
+
+  // --- GROUND_TRUTH fields (Data & Samples tab) ---
+  latitude          Float?
+  longitude         Float?
+  collectionDate    DateTime?
+  mnConcentration   Float?     // percent, lab/field measured — never modelled
+  measurementMethod String?    // e.g. "XRF", "AAS", "titration"
+  laboratory        String?
+  quality           String?    // e.g. "verified", "provisional", "flagged"
+  source            String?    // e.g. "field team", "GSI archive", "third-party lab"
+
+  // Links a ground-truth sample to the AI-predicted region it can validate.
+  regionId       String?
+  region         ProspectivityZone? @relation(fields: [regionId], references: [id])
+
+  status         SampleStatus @default(UPLOADED)
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, kind])
+  @@index([regionId])
+}
+
+enum ReportStatus {
+  QUEUED
+  GENERATING
+  READY
+  FAILED
+}
+
+model Report {
+  id                String       @id @default(uuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id])
+  requestedByUserId String
+  requestedBy       User         @relation(fields: [requestedByUserId], references: [id])
+  title             String
+  subjectType       String
+  subjectId         String
+  reportType        String
+  sections          String[]
+  analysisIds       String[]
+  status            ReportStatus @default(QUEUED)
+  currentVersion   Int          @default(0)
+  errorMessage     String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  completedAt       DateTime?
+  deletedAt         DateTime?
+
+  versions ReportVersion[]
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, status])
+  @@index([organizationId, subjectType, subjectId])
+}
+
+model ReportVersion {
+  id               String   @id @default(uuid())
+  reportId         String
+  report           Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  version          Int
+  analysisSnapshot Json
+  modelSnapshot    Json
+  dataSnapshot     Json
+  contentSnapshot  Json
+  generatedAt      DateTime @default(now())
+  generatedBy      String
+  pdfStorageKey    String?
+  checksum         String?
+
+  @@unique([reportId, version])
+  @@index([reportId, generatedAt])
+}
+
+
+// ---------------------------------------------------------------------------
+// AI decision support / Action Center (Projects)
+// Recommendations are persisted separately from executable actions so the AI
+// can recommend without silently executing an operational decision.
+// ---------------------------------------------------------------------------
+
+enum ActionPlanStatus {
+  QUEUED
+  GENERATING
+  READY
+  FAILED
+}
+
+enum ActionPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ActionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+model ActionPlan {
+  id                String          @id @default(uuid())
+  organizationId    String
+  organization      Organization    @relation(fields: [organizationId], references: [id])
+  requestedByUserId String
+  requestedBy       User            @relation(fields: [requestedByUserId], references: [id])
+  mineId            String?
+  mine              Mine?           @relation(fields: [mineId], references: [id])
+  planDate          DateTime
+  status            ActionPlanStatus @default(QUEUED)
+  summary           String?
+  detectedIssues    Json?
+  confidence        Float?
+  expectedImpact    Float?
+  supportingEvidence Json?
+  inputContext      Json
+  modelVersion      String?
+  generatedAt       DateTime?
+  errorMessage      String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  recommendations Recommendation[]
+  factors         DecisionFactor[]
+  actions         Action[]
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, planDate])
+}
+
+model Recommendation {
+  id                String         @id @default(uuid())
+  organizationId    String
+  organization      Organization   @relation(fields: [organizationId], references: [id])
+  actionPlanId      String
+  actionPlan        ActionPlan     @relation(fields: [actionPlanId], references: [id], onDelete: Cascade)
+  mineId            String?
+  mine              Mine?          @relation(fields: [mineId], references: [id])
+  title             String
+  reason            String
+  recommendedAction String
+  priority          ActionPriority
+  confidence        Float
+  estimatedImpact   Float?
+  sourceAnalysis    String?
+  modelVersion      String?
+  createdAt         DateTime       @default(now())
+
+  actions Action[]
+
+  @@index([organizationId, priority, createdAt])
+  @@index([actionPlanId])
+}
+
+model DecisionFactor {
+  id           String     @id @default(uuid())
+  actionPlanId String
+  actionPlan   ActionPlan @relation(fields: [actionPlanId], references: [id], onDelete: Cascade)
+  name         String
+  value        Float?
+  impact       Float?
+  source       String
+  observedAt   DateTime?
+  metadata     Json?
+
+  @@index([actionPlanId])
+}
+
+model Action {
+  id             String         @id @default(uuid())
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id])
+  actionPlanId   String?
+  actionPlan     ActionPlan?    @relation(fields: [actionPlanId], references: [id])
+  recommendationId String?
+  recommendation Recommendation? @relation(fields: [recommendationId], references: [id])
+  mineId         String?
+  mine           Mine?          @relation(fields: [mineId], references: [id])
+  title          String
+  description    String?
+  priority       ActionPriority
+  impact         Float?
+  zone           String?
+  status         ActionStatus   @default(PENDING)
+  createdById    String
+  createdBy      User           @relation("ActionCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  scheduledFor   DateTime?
+  assignedTeam   String?
+  notes          String?
+  approvedBy     String?
+  approvedAt     DateTime?
+  rejectedBy     String?
+  rejectedAt     DateTime?
+  completedAt    DateTime?
+  executionResult Json?
+
+  @@index([organizationId, status, createdAt])
+  @@index([organizationId, priority])
+}
+
+// ---------------------------------------------------------------------------
+// Saved map configurations (Explore: layer toggles are UI state; only
+// persisted when the user explicitly saves a configuration)
+// ---------------------------------------------------------------------------
+
+model MapConfiguration {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  name           String
+  layers         Json         // { satellite, boundary, zones, geology, elevation, ... }
+  mapView        Json?        // { centerLat, centerLng, zoom } — optional camera state
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, userId])
+}
+
+// ---------------------------------------------------------------------------
+// System status (Live Status API — no fabricated numbers)
+// ---------------------------------------------------------------------------
+
+enum ComponentStatus {
+  OPERATIONAL
+  DEGRADED
+  DOWN
+  UNKNOWN
+}
+
+model SystemComponentStatus {
+  id            String          @id @default(uuid())
+  component     String          @unique // database | ai_engine | geospatial_engine | satellite_pipeline | forecasting_engine | report_service | storage
+  status        ComponentStatus @default(UNKNOWN)
+  latencyMs     Int?
+  message       String?
+  version       String?
+  lastCheckedAt DateTime        @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Canonical MN25 domain graph
+// ---------------------------------------------------------------------------
+
+model SystemStatus {
+  id            String          @id @default(uuid())
+  component     String          @unique
+  status        ComponentStatus @default(UNKNOWN)
+  latencyMs     Int?
+  message       String?
+  version       String?
+  lastCheckedAt DateTime        @default(now())
+}
+
+model Region {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  mineId         String?
+  mine           Mine? @relation(fields: [mineId], references: [id], onDelete: SetNull)
+  name           String
+  geometry       Unsupported("geometry(MultiPolygon, 4326)")?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  analyses       Analysis[]
+
+  @@index([organizationId, name])
+}
+
+model MiningArea {
+  id             String   @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  mineId         String
+  mine           Mine @relation(fields: [mineId], references: [id], onDelete: Cascade)
+  legacyZoneId   String? @unique
+  name           String
+  geometry       Unsupported("geometry(Polygon, 4326)")?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId, mineId])
+}
+
+model SatelliteScene {
+  id               String   @id @default(uuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  datasetVersionId String?
+  datasetVersion   DatasetVersion? @relation(fields: [datasetVersionId], references: [id], onDelete: SetNull)
+  provider         String
+  sceneId          String
+  acquisitionDate  DateTime
+  geometry         Unsupported("geometry(Polygon, 4326)")?
+  metadata         Json?
+  createdAt        DateTime @default(now())
+
+  @@unique([organizationId, provider, sceneId])
+  @@index([organizationId, acquisitionDate])
+}
+
+model Model {
+  id             String   @id @default(uuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  purpose        String
+  type           ModelType
+  status         ModelRegistryStatus @default(DRAFT)
+  currentVersion String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  versions       ModelVersion[] @relation("CanonicalModelVersions")
+  predictions    Prediction[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
+}
+
+model Prediction {
+  id                    String   @id @default(uuid())
+  organizationId        String
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  modelId               String
+  model                 Model @relation(fields: [modelId], references: [id], onDelete: Restrict)
+  modelVersionId        String
+  modelVersion          ModelVersion @relation(fields: [modelVersionId], references: [id], onDelete: Restrict)
+  analysisId            String?
+  analysis              Analysis? @relation(fields: [analysisId], references: [id], onDelete: SetNull)
+  geometry              Unsupported("geometry(Geometry, 4326)")?
+  prediction            Json
+  confidence            Float?
+  uncertainty            Float?
+  inputDatasetVersions  Json
+  applicability         String?
+  dataQuality           Float?
+  featureVersion        String?
+  sourceSceneIds        Json?
+  status                String       @default("COMPLETED")
+  generatedAt           DateTime @default(now())
+
+  datasetVersions       PredictionDatasetVersion[]
+  results               AnalysisResult[]
+  explainability        Json?
+
+  @@index([organizationId, generatedAt])
+  @@index([organizationId, modelVersionId])
+}
+
+model PredictionDatasetVersion {
+  id               String @id @default(uuid())
+  predictionId     String
+  prediction       Prediction @relation(fields: [predictionId], references: [id], onDelete: Cascade)
+  datasetVersionId String
+  datasetVersion   DatasetVersion @relation(fields: [datasetVersionId], references: [id], onDelete: Restrict)
+  role             String
+  createdAt        DateTime @default(now())
+
+  @@unique([predictionId, datasetVersionId, role])
+}
+
+model Analysis {
+  id                 String @id @default(uuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  legacyAnalysisId   String? @unique
+  mineId             String?
+  mine               Mine? @relation(fields: [mineId], references: [id], onDelete: SetNull)
+  regionId           String?
+  region             Region? @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  requestedByUserId  String
+  requestedBy        User @relation(fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  analysisType       AnalysisType
+  status             AnalysisStatus @default(QUEUED)
+  modelVersionId     String?
+  modelVersion       ModelVersion? @relation(fields: [modelVersionId], references: [id], onDelete: SetNull)
+  geometry           Json?
+  inputSnapshot      Json
+  createdAt          DateTime @default(now())
+  completedAt        DateTime?
+
+  results            AnalysisResult[]
+  predictions        Prediction[]
+  legacyJob          AnalysisJob?
+
+  @@index([organizationId, createdAt])
+}
+
+model AnalysisResult {
+  id             String @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  analysisId     String
+  analysis       Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  predictionId   String?
+  prediction     Prediction? @relation(fields: [predictionId], references: [id], onDelete: SetNull)
+  resultType     String
+  payload        Json
+  explainability Json?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, analysisId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Audit log
+// ---------------------------------------------------------------------------
+
+enum RiskStatus {
+  ACTIVE
+  MONITORING
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum RiskSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model Risk {
+  id                 String       @id @default(uuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id])
+  mineId             String
+  mine               Mine         @relation(fields: [mineId], references: [id])
+  ownerId            String?
+  owner              User?        @relation("RiskOwner", fields: [ownerId], references: [id])
+  name               String
+  cause              String
+  impact             Int
+  probability        Int
+  riskScore          Int
+  severity           RiskSeverity
+  status             RiskStatus   @default(ACTIVE)
+  affectedArea       String?
+  evidence           Json
+  source             Json
+  mitigation         String?
+  notes              String?
+  calculationVersion String
+  modelVersionId     String?
+  modelVersion       ModelVersion? @relation(fields: [modelVersionId], references: [id])
+  confidence         Float?
+  uncertainty        Float?
+  inputFactors       Json?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  events             RiskEvent[]
+
+  @@index([organizationId, mineId, severity, status])
+  @@index([organizationId, createdAt])
+}
+
+model RiskEvent {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  riskId         String
+  risk           Risk         @relation(fields: [riskId], references: [id], onDelete: Cascade)
+  actorId        String?
+  actor          User?        @relation("RiskEventActor", fields: [actorId], references: [id])
+  eventType      String
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, riskId, createdAt])
+}
+
+
+enum DatasetType {
+  SATELLITE
+  GEOLOGY
+  MINING
+  PRODUCTION
+  WEATHER
+  SPECTRAL
+  SAMPLES
+  TERRAIN
+  HISTORICAL_OCCURRENCES
+}
+
+enum DatasetProcessingStatus {
+  UPLOADED
+  VALIDATING
+  PROCESSING
+  READY
+  FAILED
+}
+
+model Dataset {
+  id              String                  @id @default(uuid())
+  organizationId  String
+  organization    Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  mineId          String?
+  mine            Mine?                   @relation(fields: [mineId], references: [id])
+  createdByUserId String
+  createdBy       User                    @relation("DatasetCreatedBy", fields: [createdByUserId], references: [id])
+  name            String
+  type            DatasetType
+  provider        String
+  sourceUrl       String
+  version         String
+  coverage        Json?
+  acquisitionDate DateTime?
+  ingestionDate   DateTime                @default(now())
+  processingStatus DatasetProcessingStatus @default(UPLOADED)
+  qualityScore    Float?
+  license         String?
+  checksum        String
+  format          String?
+  contentType     String?
+  sizeBytes       BigInt?
+  storagePath     String?
+  validationReport Json?
+  processingError String?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  versions        DatasetVersion[]
+  analysisLinks   AnalysisDatasetLink[]
+  qualityRuns     DataQualityRun[]
+  geometries      DatasetGeometry[]
+
+  @@unique([organizationId, name, type])
+  @@index([organizationId, type, processingStatus])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, checksum])
+}
+
+model DatasetVersion {
+  id              String                  @id @default(uuid())
+  datasetId       String
+  dataset         Dataset                 @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  organizationId  String
+  organization    Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdByUserId String
+  createdBy       User                    @relation("DatasetVersionCreatedBy", fields: [createdByUserId], references: [id])
+  version         String
+  provider        String
+  sourceUrl       String
+  coverage        Json?
+  acquisitionDate DateTime?
+  ingestionDate   DateTime                @default(now())
+  processingStatus DatasetProcessingStatus @default(UPLOADED)
+  qualityScore    Float?
+  license         String?
+  checksum        String
+  format          String?
+  contentType     String?
+  sizeBytes       BigInt?
+  storagePath     String?
+  validationReport Json?
+  processingError String?
+  createdAt       DateTime                @default(now())
+
+  analysisLinks   AnalysisDatasetLink[]
+  qualityRuns     DataQualityRun[]
+  geometries      DatasetGeometry[]
+
+  @@unique([datasetId, version])
+  @@index([organizationId, datasetId, createdAt])
+  @@index([organizationId, checksum])
+  satelliteScenes SatelliteScene[]
+  predictions    PredictionDatasetVersion[]
+}
+
+model AnalysisDatasetLink {
+  id              String         @id @default(uuid())
+  organizationId  String
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  analysisJobId   String
+  analysisJob     AnalysisJob    @relation(fields: [analysisJobId], references: [id], onDelete: Cascade)
+  datasetId       String
+  dataset         Dataset        @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  datasetVersionId String?
+  datasetVersion  DatasetVersion? @relation(fields: [datasetVersionId], references: [id], onDelete: SetNull)
+  role            String         @default("input")
+  createdAt       DateTime       @default(now())
+
+  @@unique([analysisJobId, datasetId, datasetVersionId])
+  @@index([organizationId, datasetId])
+  @@index([analysisJobId])
+}
+
+model DatasetGeometry {
+  id               String          @id @default(uuid())
+  organizationId   String
+  organization     Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  datasetId        String
+  dataset          Dataset         @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  datasetVersionId String?
+  datasetVersion   DatasetVersion? @relation(fields: [datasetVersionId], references: [id], onDelete: SetNull)
+  featureIndex     Int
+  properties       Json?
+  geometry         Unsupported("geometry(Geometry, 4326)")
+  createdAt        DateTime        @default(now())
+
+  @@unique([datasetVersionId, featureIndex])
+  @@index([organizationId, datasetId])
+}
+
+enum DataQualityRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model DataQualityRun {
+  id               String             @id @default(uuid())
+  organizationId   String
+  organization     Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  datasetId        String
+  dataset          Dataset            @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  datasetVersionId String?
+  datasetVersion   DatasetVersion?    @relation(fields: [datasetVersionId], references: [id], onDelete: SetNull)
+  requestedByUserId String
+  requestedBy      User               @relation(fields: [requestedByUserId], references: [id])
+  status           DataQualityRunStatus @default(RUNNING)
+  schemaValid      Boolean?
+  coordinateValid  Boolean?
+  duplicates       Int                @default(0)
+  missingValues    Int                @default(0)
+  rangeViolations  Int                @default(0)
+  geometryValid    Boolean?
+  qualityScore     Float?
+  report           Json?
+  errorMessage     String?
+  createdAt        DateTime           @default(now())
+  completedAt      DateTime?
+
+  @@index([organizationId, datasetId, createdAt])
+}
+
+model AuditLog {
+  id             String       @id @default(uuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  userId         String?
+  user           User?        @relation(fields: [userId], references: [id])
+  action         String       // e.g. "dashboard.new_analysis.requested"
+  resourceType   String
+  resourceId     String?
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, createdAt])
+}

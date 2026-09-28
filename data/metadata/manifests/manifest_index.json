@@ -1,0 +1,9 @@
+{
+  "manifest_version": "mn25-manifest-1.0.0",
+  "datasets": [
+    {"dataset_id":"manganese_occurrences_gsi","version":"v1","status":"UNAVAILABLE","reason":"Official OGD resource/API access not configured in this execution environment."},
+    {"dataset_id":"sentinel2_central_india","version":"v1","status":"UNAVAILABLE","reason":"Copernicus asset download credentials/access not configured in this execution environment."},
+    {"dataset_id":"dem_copernicus_glo30","version":"v1","status":"UNAVAILABLE","reason":"Official DEM download not configured in this execution environment."},
+    {"dataset_id":"geology_gsi_ngdr","version":"v1","status":"UNAVAILABLE","reason":"NGDR/GSI machine-readable geology access not configured in this execution environment."}
+  ]
+}
