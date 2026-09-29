@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 
 export async function recordAudit(params: {
@@ -17,7 +18,7 @@ export async function recordAudit(params: {
         action: params.action,
         resourceType: params.resourceType,
         resourceId: params.resourceId ?? null,
-        metadata: params.metadata ?? undefined,
+        metadata: (params.metadata as Prisma.InputJsonValue | undefined) ?? undefined,
       },
     });
   } catch (err) {

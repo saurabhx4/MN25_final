@@ -39,7 +39,7 @@ export async function getDashboardSummary(organizationId: string, userId: string
     listRecentAnalyses(organizationId, 5),
     getSystemStatusSummary(),
     prisma.prediction.count({ where: { organizationId, modelVersion: { mlStatus: 'PRODUCTION', status: 'DEPLOYED' } } }),
-    prisma.miningArea.aggregate({ where: { organizationId }, _sum: { areaKm2: true } }),
+    prisma.zone.aggregate({ where: { mine: { organizationId } }, _sum: { areaKm2: true } }),
   ]);
 
   const result = {

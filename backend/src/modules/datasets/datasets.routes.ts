@@ -78,7 +78,7 @@ datasetsRouter.get('/', requirePermission('data.read'), async (req, res, next) =
     if (q.status) where.processingStatus = q.status.toUpperCase() as DatasetProcessingStatus;
     if (q.mineId) where.mineId = q.mineId;
     const [results,total] = await Promise.all([prisma.dataset.findMany({ where, orderBy: { updatedAt: 'desc' }, take: q.limit, skip: q.offset }), prisma.dataset.count({ where })]);
-    res.json({ results: results.map(serializeDataset), total, limit: q.limit, offset: q.offset });
+    res.json({ results: results.map(d => serializeDataset(d)), total, limit: q.limit, offset: q.offset });
   } catch (err) { next(err); }
 });
 
