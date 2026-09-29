@@ -61,7 +61,7 @@ export default function AppShell({ env, onExit }: { env: 'organization' | 'emplo
     let cancelled = false;
     (async () => {
       try {
-        const [{ results }, summary] = await Promise.all([getDashboardTopZones({ limit: 100 }), getDashboardSummary()]);
+        const [results, summary] = await Promise.all([getDashboardTopZones({ limit: 100 }), getDashboardSummary()]);
         if (cancelled) return;
         if (results.length) {
           setZones(results.map(z => ({ id: z.id, name: z.name, region: z.region, lat: z.latitude, lng: z.longitude, concentration: z.predictedMn, confidence: z.confidence, prospectivity: z.prospectivity, status: z.status, area: z.area })) as Zone[]);

@@ -18,7 +18,7 @@ export default function ProductionAI() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  useEffect(() => { (async () => { try { const settings = await getSettings(); if (settings.selectedMine?.id) setMineId(settings.selectedMine.id); if ([30, 60, 90].includes(settings.forecastHorizon)) setForecastHorizon(settings.forecastHorizon as 30 | 60 | 90); } catch { setMessage('Production settings are unavailable.'); } })(); }, []);
+  useEffect(() => { (async () => { try { const settings = await getSettings(); if (settings.selectedMine?.id) setMineId(settings.selectedMine.id); if ([7, 30, 90].includes(settings.forecastHorizon)) setForecastHorizon(settings.forecastHorizon as 7 | 30 | 90); } catch { setMessage('Production settings are unavailable.'); } })(); }, []);
   useEffect(() => { if (!mineId) return; (async () => { try { const r = await getProductionHistory({ mineId, granularity: 'daily' }); setHistory(r.results); } catch { setHistory([]); } })(); }, [mineId]);
 
   const days = range === '7 Days' ? 7 : range === '30 Days' ? 30 : 90;
