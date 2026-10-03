@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { Worker } from 'bullmq';
 import { spawn } from 'child_process';
 import path from 'path';
@@ -32,7 +33,7 @@ export const mlWorker = new Worker('ml-jobs', async job=>{
       const datasetPath=process.env.MN25_CANONICAL_DATASET_PATH ?? path.join(dataRoot,'training/classification/canonical_training.parquet');
       await runPython(['--dataset',datasetPath,'--readiness',process.env.MN25_DATA_READINESS_REPORT ?? path.join(dataRoot,'reports/dataset_readiness/DATASET_READINESS_REPORT.md'),'--dataset-version',experiment.datasetVersion,'--feature-version',experiment.featureVersion,'--output',root+'/artifacts']);
       const comparisonPath=path.join(dataRoot,'reports/ml/MODEL_COMPARISON.json');
-      const comparison=JSON.parse(await fs.readFile(comparisonPath,'utf8')) as {models:Record<string,{validation:Record<string,unknown>,test:Record<string,unknown>,calibration:Record<string,unknown>}>};
+      const comparison=JSON.parse(await fs.readFile(comparisonPath,'utf8')) as {models:Record<string,{validation:Prisma.InputJsonObject,test:Prisma.InputJsonObject,calibration:Prisma.InputJsonObject}>,training_blocks?:Prisma.InputJsonValue,validation_blocks?:Prisma.InputJsonValue,test_blocks?:Prisma.InputJsonValue};
       const algorithms=Object.keys(comparison.models);
       const trainingDate=new Date();
       for(const algorithm of algorithms){

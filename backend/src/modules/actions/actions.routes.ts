@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { Router } from 'express';
 import { Queue } from 'bullmq';
 import { z } from 'zod';
@@ -38,7 +39,7 @@ actionsRouter.post('/action-plans/generate', requireRole('ADMIN', 'RESEARCHER'),
       data: {
         organizationId: req.user!.organizationId, requestedByUserId: req.user!.id, mineId: body.mineId,
         planDate: body.date ? new Date(body.date) : new Date(), status: 'QUEUED',
-        inputContext: { analysisContext: body.analysisContext ?? null, productionContext: body.productionContext ?? null, riskContext: body.riskContext ?? null, weatherContext: body.weatherContext ?? null },
+        inputContext: { analysisContext: body.analysisContext ?? null, productionContext: body.productionContext ?? null, riskContext: body.riskContext ?? null, weatherContext: body.weatherContext ?? null } as Prisma.InputJsonObject,
       },
     });
     await actionPlanQueue.add('generate-action-plan', { actionPlanId: plan.id }, { removeOnComplete: 100, removeOnFail: 100 });

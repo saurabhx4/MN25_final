@@ -279,7 +279,7 @@ model ProspectivityZone {
   organization   Organization? @relation(fields: [organizationId], references: [id])
   region         String?
   /// PostGIS polygon geometry of the predicted zone
-  geometry       Unsupported("geometry(Polygon, 4326)")
+  geometry       Unsupported("geometry(Polygon, 4326)")?
   centerLatitude  Float
   centerLongitude Float
 

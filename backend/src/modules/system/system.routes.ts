@@ -25,7 +25,7 @@ function publicStatus(status: string) {
 systemRouter.get('/status', async (_req, res, next) => {
   try {
     const rows = await prisma.systemComponentStatus.findMany();
-    const byComponent = new Map(rows.map(r => [r.component, r]));
+    const byComponent = new Map<string, any>(rows.map((r: any) => [r.component, r]));
     const components = Object.fromEntries(requestedComponents.map(([key, dbKey]) => {
       const r = byComponent.get(dbKey);
       return [key, r ? { status: publicStatus(r.status), latency: r.latencyMs, lastChecked: r.lastCheckedAt, version: r.version ?? null, message: r.message ?? null } : { status: 'degraded', latency: null, lastChecked: null, version: null, message: 'No health probe has reported yet.' }];

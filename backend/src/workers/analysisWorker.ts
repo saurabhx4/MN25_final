@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { Worker } from 'bullmq';
 import { prisma } from '../lib/prisma';
 import { env } from '../config/env';
@@ -37,7 +38,7 @@ async function callInferenceService(payload: unknown) {
     prospectivityScore: number;
     prospectivityLevel: 'LOW' | 'MODERATE' | 'HIGH';
     dataSourceIds: string[];
-    explanation?: Record<string, unknown> | null;
+    explanation?: Prisma.InputJsonObject | null;
   }>;
 }
 
@@ -65,16 +66,17 @@ async function callGeospatialEngine(payload: unknown) {
     geometry: { type: 'Polygon'; coordinates: number[][][] };
     centerLatitude: number;
     centerLongitude: number;
-    featureContributions: Record<string, unknown> | null;
+    featureContributions: Prisma.InputJsonObject | null;
     limitations: string | null;
-    spectralIndicators: Record<string, unknown> | null;
-    geologyIndicators: Record<string, unknown> | null;
-    terrainIndicators: Record<string, unknown> | null;
+    spectralIndicators: Prisma.InputJsonObject | null;
+    geologyIndicators: Prisma.InputJsonObject | null;
+    terrainIndicators: Prisma.InputJsonObject | null;
     trainingDataset?: string | null;
     trainingDate?: string | null;
-    metrics?: Record<string, unknown> | null;
-    features?: Record<string, unknown> | null;
-    explanation?: Record<string, unknown> | null;
+    metrics?: Prisma.InputJsonObject | null;
+    features?: Prisma.InputJsonObject | null;
+    explanation?: Prisma.InputJsonObject | null;
+    prediction?: Prisma.InputJsonObject | null;
   }>;
 }
 
@@ -124,8 +126,8 @@ export const analysisWorker = new Worker(
           type: 'PROSPECTIVITY',
           trainingDataset: result.trainingDataset ?? result.inputDatasetVersion,
           trainingDate: result.trainingDate ? new Date(result.trainingDate) : null,
-          metrics: (result.metrics as Record<string, unknown> | null) ?? null,
-          features: (result.features as Record<string, unknown> | null) ?? null,
+          metrics: (result.metrics as Prisma.InputJsonObject | null) ?? null,
+          features: (result.features as Prisma.InputJsonObject | null) ?? null,
         });
         const modelVersion = registered.version;
         if (modelVersion.status !== 'DEPLOYED' || modelVersion.mlStatus !== 'PRODUCTION') throw new Error('MODEL_NOT_PRODUCTION');
@@ -133,7 +135,7 @@ export const analysisWorker = new Worker(
         const zone = await prisma.prospectivityZone.create({
           data: {
             organizationId: analysisJob.organizationId,
-            geometry: undefined, // set via raw SQL below (Unsupported type)
+            // geometry is an Unsupported() column; it is written via raw SQL below
             centerLatitude: result.centerLatitude,
             centerLongitude: result.centerLongitude,
             modelVersionId: modelVersion.id,

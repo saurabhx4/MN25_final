@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { AppError } from '../../middleware/errorHandler';
 
@@ -233,8 +234,8 @@ function modelPurpose(type: string) {
   return 'Operational risk';
 }
 
-function buildAnalysisSnapshot(job: { inputPayload: unknown; requestedLayers: unknown; regionAreaKm2: number | null; currentStage: string | null }) {
-  return { inputPayload: job.inputPayload, requestedLayers: job.requestedLayers, regionAreaKm2: job.regionAreaKm2, currentStage: job.currentStage };
+function buildAnalysisSnapshot(job: { inputPayload: unknown; requestedLayers: unknown; regionAreaKm2: number | null; currentStage: string | null }): Prisma.InputJsonObject {
+  return { inputPayload: job.inputPayload, requestedLayers: job.requestedLayers, regionAreaKm2: job.regionAreaKm2, currentStage: job.currentStage } as Prisma.InputJsonObject;
 }
 
 export async function syncCanonicalMiningAreas(organizationId: string) {

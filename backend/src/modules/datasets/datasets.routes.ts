@@ -50,16 +50,16 @@ datasetsRouter.post('/', requirePermission('data.upload'), upload.single('file')
     const result = await prisma.$transaction(async tx => {
       const dataset = existing ?? await tx.dataset.create({ data: {
         organizationId: req.user!.organizationId, mineId: body.mineId, createdByUserId: req.user!.id, name: body.name, type,
-        provider: body.provider, sourceUrl: body.sourceUrl, version: body.version, coverage: body.coverage, acquisitionDate: body.acquisitionDate ? new Date(body.acquisitionDate) : undefined,
+        provider: body.provider, sourceUrl: body.sourceUrl, version: body.version, coverage: body.coverage as Prisma.InputJsonValue | undefined, acquisitionDate: body.acquisitionDate ? new Date(body.acquisitionDate) : undefined,
         license: body.license, checksum, format, contentType: file?.mimetype, sizeBytes: file?.size, storagePath,
       }});
       const version = await tx.datasetVersion.create({ data: {
         datasetId: dataset.id, organizationId: req.user!.organizationId, createdByUserId: req.user!.id, version: body.version, provider: body.provider,
-        sourceUrl: body.sourceUrl, coverage: body.coverage, acquisitionDate: body.acquisitionDate ? new Date(body.acquisitionDate) : undefined, license: body.license,
+        sourceUrl: body.sourceUrl, coverage: body.coverage as Prisma.InputJsonValue | undefined, acquisitionDate: body.acquisitionDate ? new Date(body.acquisitionDate) : undefined, license: body.license,
         checksum, format, contentType: file?.mimetype, sizeBytes: file?.size, storagePath,
       }});
       if (existing) await tx.dataset.update({ where: { id: existing.id }, data: {
-        mineId: body.mineId ?? existing.mineId, provider: body.provider, sourceUrl: body.sourceUrl, version: body.version, coverage: body.coverage,
+        mineId: body.mineId ?? existing.mineId, provider: body.provider, sourceUrl: body.sourceUrl, version: body.version, coverage: body.coverage as Prisma.InputJsonValue | undefined,
         acquisitionDate: body.acquisitionDate ? new Date(body.acquisitionDate) : undefined, license: body.license, checksum, format, contentType: file?.mimetype,
         sizeBytes: file?.size, storagePath, processingStatus: 'UPLOADED', qualityScore: null, validationReport: null, processingError: null,
       }});
@@ -78,7 +78,7 @@ datasetsRouter.get('/', requirePermission('data.read'), async (req, res, next) =
     if (q.status) where.processingStatus = q.status.toUpperCase() as DatasetProcessingStatus;
     if (q.mineId) where.mineId = q.mineId;
     const [results,total] = await Promise.all([prisma.dataset.findMany({ where, orderBy: { updatedAt: 'desc' }, take: q.limit, skip: q.offset }), prisma.dataset.count({ where })]);
-    res.json({ results: results.map(serializeDataset), total, limit: q.limit, offset: q.offset });
+    res.json({ results: results.map(d => serializeDataset(d)), total, limit: q.limit, offset: q.offset });
   } catch (err) { next(err); }
 });
 

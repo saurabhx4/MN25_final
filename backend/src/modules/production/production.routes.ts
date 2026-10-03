@@ -64,7 +64,7 @@ productionRouter.get('/forecast/:id', async (req, res, next) => {
 });
 
 productionRouter.post('/scenario', async (req, res, next) => {
-  try { const body = scenarioBody.parse(req.body); res.json(await runScenario({ organizationId: req.user!.organizationId, userId: req.user!.id, ...body })); } catch (err) { next(err); }
+  try { const body = scenarioBody.parse(req.body); res.json(await runScenario({ organizationId: req.user!.organizationId, userId: req.user!.id, ...(body as Omit<Parameters<typeof runScenario>[0], 'organizationId' | 'userId'>) })); } catch (err) { next(err); }
 });
 
 productionRouter.post('/forecast/:id/report', async (req, res, next) => {
