@@ -75,6 +75,7 @@ async function callGeospatialEngine(payload: unknown) {
     metrics?: Record<string, unknown> | null;
     features?: Record<string, unknown> | null;
     explanation?: Record<string, unknown> | null;
+    prediction?: Record<string, unknown> | null;
   }>;
 }
 

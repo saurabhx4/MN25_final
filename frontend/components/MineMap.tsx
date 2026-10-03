@@ -5,12 +5,17 @@ import { Crosshair, Maximize, Minus, MousePointer2, Plus, ScanLine, Satellite, S
 import type { Zone } from '../lib/data';
 import { getNearbyMiningAreas, type NearbyMiningArea } from '../lib/api';
 
+type ArcgisRequire = ((modules: string[], callback: (...args: any[]) => void) => void) & { on?: (...args: any[]) => void };
+
 declare global {
   interface Window {
-    require?: ((modules: string[], callback: (...args: any[]) => void) => void) & { on?: (...args: any[]) => void };
     __mn25ArcgisPromise?: Promise<void>;
   }
 }
+
+// `window.require` is injected at runtime by the ArcGIS AMD loader. Read it through a
+// helper so it does not collide with the Node `require` global typing.
+const getArcgisRequire = (): ArcgisRequire | undefined => (window as unknown as { require?: ArcgisRequire }).require;
 
 export type MapLayers = {
   boundary: boolean;
@@ -59,7 +64,7 @@ function loadArcGIS(): Promise<void> {
 
   window.__mn25ArcgisPromise = new Promise((resolve, reject) => {
     const finish = () => {
-      if (window.require) resolve();
+      if (getArcgisRequire()) resolve();
       else reject(new Error('ArcGIS AMD loader did not initialize.'));
     };
 
@@ -71,7 +76,7 @@ function loadArcGIS(): Promise<void> {
       document.head.appendChild(link);
     }
 
-    if (window.require) {
+    if (getArcgisRequire()) {
       finish();
       return;
     }
@@ -162,8 +167,9 @@ export default function MineMap({
     let searchComplete: { remove: () => void } | null = null;
     let searchClear: { remove: () => void } | null = null;
     loadArcGIS().then(() => {
-      if (cancelled || !container.current || !window.require) return;
-      window.require([
+      const arcgisRequire = getArcgisRequire();
+      if (cancelled || !container.current || !arcgisRequire) return;
+      arcgisRequire([
         'esri/Map',
         'esri/views/SceneView',
         'esri/layers/GraphicsLayer',
@@ -397,10 +403,10 @@ export default function MineMap({
           geometry: new a.Point({ latitude: z.lat, longitude: z.lng }),
           symbol: new a.SimpleMarkerSymbol({ style: 'circle', color: c, size: 22 + z.prospectivity / 7, outline: { color: [244,238,229,0.95], width: 1.4 } }),
           attributes: { id: z.id, name: z.name, status: z.status, concentration: z.concentration },
-          popupTemplate: { title: z.name, content: `${z.status} · ${z.concentration.toFixed(1)}% Mn` },
+          popupTemplate: { title: z.name, content: `${z.status} · ${(z.concentration ?? 0).toFixed(1)}% Mn` },
         });
         layer.add(graphic);
-        graphic.popupTemplate = { title: z.name, content: `${z.status} · ${z.concentration.toFixed(1)}% Mn` };
+        graphic.popupTemplate = { title: z.name, content: `${z.status} · ${(z.concentration ?? 0).toFixed(1)}% Mn` };
       });
     }
 

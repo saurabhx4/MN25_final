@@ -44,8 +44,8 @@ export const seedActions: Action[] = [
 const defaultWeights = { geology: 0.30, mineral: 0.25, historical: 0.20, terrain: 0.10, structure: 0.10, proximity: 0.05 };
 
 export function prospectivity(z: Zone, w: typeof defaultWeights = defaultWeights): number {
-  const s = z.geology * w.geology + z.mineral * w.mineral + z.historical * w.historical
-    + z.terrain * w.terrain + z.structure * w.structure + z.proximity * w.proximity;
+  const s = (z.geology ?? 0) * w.geology + (z.mineral ?? 0) * w.mineral + (z.historical ?? 0) * w.historical
+    + (z.terrain ?? 0) * w.terrain + (z.structure ?? 0) * w.structure + (z.proximity ?? 0) * w.proximity;
   return Math.round(Math.max(0, Math.min(100, s)));
 }
 

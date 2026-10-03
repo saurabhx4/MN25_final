@@ -26,9 +26,14 @@ function blocked(key: string) { const v = failedLogins.get(key); if (!v) return 
 function recordFailed(key: string) { const now = Date.now(); const v = failedLogins.get(key); if (!v || v.resetAt <= now) failedLogins.set(key, { count: 1, resetAt: now + 15 * 60 * 1000 }); else v.count += 1; }
 function clearFailed(key: string) { failedLogins.delete(key); }
 function newToken() { return crypto.randomBytes(48).toString('base64url'); }
+function cookieSameSite(): 'lax' | 'strict' | 'none' {
+  const v = (process.env.COOKIE_SAMESITE || 'lax').toLowerCase();
+  return v === 'none' || v === 'strict' ? v : 'lax';
+}
 function cookieOptions() {
-  const secure = process.env.NODE_ENV === 'production';
-  return { httpOnly: true, secure, sameSite: 'lax' as const, path: '/', maxAge: SESSION_DAYS * 24 * 60 * 60 * 1000 };
+  // SameSite=None requires Secure, so force it on whenever None is selected.
+  const secure = process.env.NODE_ENV === 'production' || cookieSameSite() === 'none';
+  return { httpOnly: true, secure, sameSite: cookieSameSite(), path: '/', maxAge: SESSION_DAYS * 24 * 60 * 60 * 1000 };
 }
 function publicUser(user: { id: string; name: string; email: string; role: AuthRole; organizationId: string; environment: 'ORGANIZATION'|'EMPLOYEE'; createdAt: Date; mineMemberships: { mineId: string }[] }) {
   return {
@@ -98,7 +103,7 @@ authRouter.post('/logout', async (req, res, next) => {
         await recordAudit({ organizationId: session.organizationId, userId: session.userId, action: 'auth.logout', resourceType: 'AuthSession', resourceId: session.id });
       }
     }
-    res.clearCookie(cookieName(), { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/' });
+    res.clearCookie(cookieName(), { httpOnly: true, secure: process.env.NODE_ENV === 'production' || cookieSameSite() === 'none', sameSite: cookieSameSite(), path: '/' });
     res.status(204).send();
   } catch (err) { next(err); }
 });

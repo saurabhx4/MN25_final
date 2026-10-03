@@ -35,6 +35,7 @@ import { mlRouter } from './modules/ml/ml.routes';
 
 export function createApp() {
   const app = express();
+  app.set('trust proxy', 1); // Railway terminates TLS in front of the app
   app.use(helmet());
   app.use(cors({ origin: env.webOrigin, credentials: true }));
   app.use(express.json({ limit: '2mb' }));
